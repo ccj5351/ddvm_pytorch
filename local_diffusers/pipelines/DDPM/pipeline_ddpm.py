@@ -16,6 +16,7 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
+<<<<<<< HEAD
 from tqdm import tqdm
 
 from diffusers.utils.torch_utils import randn_tensor
@@ -24,7 +25,6 @@ from diffusers import (
     DiffusionPipeline, 
     ImagePipelineOutput
 )
-
 
 class DDPMPipeline(DiffusionPipeline):
     r"""
@@ -113,8 +113,11 @@ class DDPMPipeline(DiffusionPipeline):
         else:
             model_input = inputs
             timesteps = self.scheduler.timesteps[-start_t:]
-            # added by CCJ:
-            image = inputs[:,-2:,:,:]
+            # NOTE: added by CCJ:
+            # since we do not want to use a random noise 
+            # for start_t being a non-zero step 
+            # (for example: the coarse-to-fine pattern)
+            image = inputs[:,-2:,:,:] # use coarse flow you predicted already
         
         # Denoising loop
         if show_progress_bar:
