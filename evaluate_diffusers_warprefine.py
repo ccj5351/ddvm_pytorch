@@ -122,7 +122,12 @@ def validate_kitti(pipeline, args=None, sigma=0.05, start_t=4):
 
         resized_flow = F.interpolate(resized_flow, IMAGE_SIZE, mode='bicubic', align_corners=True) * \
                torch.tensor([W / TRAIN_SIZE[1], H / TRAIN_SIZE[0]]).view(1, 2, 1, 1).cuda()
-
+        
+        # See: Open-DDM, https://arxiv.org/pdf/2312.01746
+        # Backward the second image with up-sampled coarse flow. 
+        # We then estimate the residual flow between the warped image 
+        # and the first image in a patch-wise manner with a small 
+        # amount of time steps;
         warpimg1 = backwarp(batch['image1'], resized_flow)
 
         flows = 0

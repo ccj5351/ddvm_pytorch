@@ -24,7 +24,10 @@ from .augmentations.aug_params import get_params as it_get_params
 
 
 class FlowDataset(data.Dataset):
-    def __init__(self, aug_params=None, sparse=False, it_aug=False, resize_for_test=False, kitti_format=False, n_sample=None):
+    def __init__(self, aug_params=None, sparse=False, 
+                 it_aug=False, resize_for_test=False, 
+                 kitti_format=False, n_sample=None):
+        
         self.augmentor = None
         self.sparse = sparse
         self.it_aug = it_aug
@@ -205,12 +208,19 @@ class FlyingChairs(FlowDataset):
 
 
 class AutoFlow(FlowDataset):
-    def __init__(self, aug_params=None, split='train', root='datasets/AutoFlow', it_aug=True, n_sample=None):
+    def __init__(self, aug_params=None, 
+                split='train', 
+                root='datasets/AutoFlow', 
+                it_aug=True, 
+                n_sample=None):
+        
         super(AutoFlow, self).__init__(aug_params, it_aug=it_aug, n_sample=n_sample)
-
         batches = sorted(
-            glob(osp.join(root, 'static_40k_png_1_of_4/*')) + glob(osp.join(root, 'static_40k_png_2_of_4/*'))
-            + glob(osp.join(root, 'static_40k_png_3_of_4/*')) + glob(osp.join(root, 'static_40k_png_4_of_4/*')))
+            glob(osp.join(root, 'static_40k_png_1_of_4/*')) 
+            + glob(osp.join(root, 'static_40k_png_2_of_4/*'))
+            + glob(osp.join(root, 'static_40k_png_3_of_4/*')) 
+            + glob(osp.join(root, 'static_40k_png_4_of_4/*'))
+            )
 
         for i in range(len(batches)):
             batchid = batches[i]
@@ -219,9 +229,12 @@ class AutoFlow(FlowDataset):
 
 
 class FlyingThings3D(FlowDataset):
-    def __init__(self, aug_params=None, root='datasets/FlyingThings3D', dstype='frames_cleanpass', split='training', n_sample=None):
+    def __init__(self, aug_params=None, 
+                root='datasets/FlyingThings3D', 
+                dstype='frames_cleanpass', 
+                split='training', n_sample=None):
+        
         super(FlyingThings3D, self).__init__(aug_params, n_sample=n_sample)
-
         if split == 'training':
             for cam in ['left']:
                 for direction in ['into_future', 'into_past']:

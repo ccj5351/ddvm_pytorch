@@ -2,7 +2,7 @@ GPU_ID=$1
 
 DATA_EVAL="kitti sintel"
 DATA_EVAL="kitti"
-DATA_EVAL="sintel"
+#DATA_EVAL="sintel"
 DATA_DIR="/home/ccj/code/tpk2scene/datasets"
 
 MACHINE_NAME="rtxa6ks3"

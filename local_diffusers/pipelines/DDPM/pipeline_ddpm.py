@@ -16,7 +16,6 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-<<<<<<< HEAD
 from tqdm import tqdm
 
 from diffusers.utils.torch_utils import randn_tensor

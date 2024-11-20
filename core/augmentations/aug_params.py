@@ -37,9 +37,12 @@ def get_params(name):
   aug_params.is_channel_swapping = False  # True: random swapping color channels
   aug_params.is_augment_colors = True
   aug_params.is_augment_spatial = True
-  aug_params.disable_ground_truth = False  # True: set ground truth to invalid for semi-supervised training
+  aug_params.disable_ground_truth = False  # True: set ground truth to invalid 
+                                           #       for semi-supervised training
   aug_params.black = False  # True: allow out-of-boundary cropping (Chairs)
-  aug_params.prob_hard_sample = 1.0  # probability that we use the hard sample technique, see line 87 in https://github.com/gengshan-y/VCN/blob/master/dataloader/robloader.py
+  aug_params.prob_hard_sample = 1.0  # probability that we use the hard sample 
+                                     # technique, see line 87 in 
+                                     # https://github.com/gengshan-y/VCN/blob/master/dataloader/robloader.py
   aug_params.is_random_erasing = False
 
   # spatial params
@@ -56,4 +59,5 @@ def get_params(name):
   aug_params.col_factor = 1.
   aug_params.ladd_factor = 1.
   aug_params.col_rot_factor = 1.
+  
   return aug_params
