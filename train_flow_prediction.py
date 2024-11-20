@@ -118,7 +118,7 @@ def parse_args():
     parser.add_argument(
         "--logging_dir",
         type=str,
-        default="logs",
+        default="logs_nfs",
         help=(
             "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
             " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
@@ -143,7 +143,8 @@ def parse_args():
         type=str,
         default="epsilon",
         choices=["epsilon", "sample"],
-        help="Whether the model should predict the 'epsilon'/noise error or directly the reconstructed image 'x0'.",
+        help= "Whether the model should predict the 'epsilon'/noise error"
+              " or directly the reconstructed image 'x0'.",
     )
     
     parser.add_argument("--ddpm_num_steps", type=int, default=1000)
@@ -153,7 +154,8 @@ def parse_args():
         type=int,
         default=500,
         help=(
-            "Save a checkpoint of the training state every X updates. These checkpoints are only suitable for resuming"
+            "Save a checkpoint of the training state every X updates."
+            " These checkpoints are only suitable for resuming"
             " training using `--resume_from_checkpoint`."
         ),
     )
@@ -168,7 +170,8 @@ def parse_args():
         type=str,
         default="constant_with_warmup",
         help=(
-            'The scheduler type to use. Choose between ["linear", "cosine", "cosine_with_restarts", "polynomial",'
+            'The scheduler type to use. Choose between '
+            '["linear", "cosine", "cosine_with_restarts", "polynomial",'
             ' "constant", "constant_with_warmup"]'
         ),
     )
@@ -206,10 +209,13 @@ def main(args):
         model_class = RAFT_Unet
     else:
         print('error: Unet type undefined!')
-        return
+        raise NotImplementedError
 
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
-    accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    accelerator_project_config = ProjectConfiguration(
+                project_dir=args.output_dir, 
+                logging_dir=logging_dir
+            )
 
     kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))  # a big number for high resolution or big dataset
     accelerator = Accelerator(
