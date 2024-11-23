@@ -4,7 +4,7 @@ from torch.utils.data import (
 )
 from core.datasets_return_dict import AutoFlow
 from torch.utils.data.distributed import DistributedSampler
-
+import os
 
 def fetch_dataloader(args, rank=0, world_size=1):
     if args.stage == 'autoflow':
@@ -15,7 +15,10 @@ def fetch_dataloader(args, rank=0, world_size=1):
                 'do_flip': True,
                 'add_gaussian_noise': args.add_gaussian_noise
                 }
-        autoflow = AutoFlow(aug_params, it_aug=args.it_aug, n_sample=40000)
+        autoflow = AutoFlow(aug_params, 
+                            root = os.path.join(args.data_dir, 'autoflow'), 
+                            it_aug = args.it_aug, n_sample=40000
+                            )
         train_dataset = ConcatDataset([autoflow, ])
     else:
         raise NotImplementedError(args.stage)
@@ -32,7 +35,7 @@ def fetch_dataloader(args, rank=0, world_size=1):
                         pin_memory = True, 
                         shuffle = False,
                         num_workers = args.dataloader_num_workers, 
-                        sampler=train_sampler
+                        sampler = train_sampler
                     )
     return train_loader
 

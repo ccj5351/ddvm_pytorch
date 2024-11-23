@@ -4,3 +4,4 @@ tensorflow-cpu==2.13.0
 tensorflow-addons==0.21.0
 diffusers["torch"]
 tensorboard
+datasets

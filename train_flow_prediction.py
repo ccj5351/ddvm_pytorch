@@ -4,31 +4,38 @@ import math
 import os
 import shutil
 from datetime import timedelta
+from packaging import version
+from tqdm.auto import tqdm
+import torch
 
 import accelerate
 import datasets
-import torch
-from local_accelerate.accelerator import Accelerator
 from accelerate import InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
-from packaging import version
-from tqdm.auto import tqdm
-from core.utils import flow_viz
-from core.utils.utils import backwarp
-from core.resample import Sampler
 
 import diffusers
 from diffusers import DDPMScheduler
+from diffusers.training_utils import EMAModel
+from diffusers.utils import check_min_version, is_accelerate_version
+from diffusers.optimization import get_scheduler
+
+# this projects modules
+from core.utils import flow_viz
+from core.utils.utils import backwarp
+from core.resample import Sampler
 from local_diffusers.models.imagen_unet import SRUnet256
 from local_diffusers.models.raft_unet import RAFT_Unet
 from local_diffusers.pipelines.DDPM import DDPMPipeline
-from diffusers.training_utils import EMAModel
-from diffusers.utils import check_min_version, is_accelerate_version
 from set_up_dataset import fetch_dataloader
-from diffusers.optimization import get_scheduler
+
+#from local_accelerate.accelerator import Accelerator
+from accelerate import Accelerator
+
 import evaluate_diffusers
-# Will error if the minimal version of diffusers is not installed. Remove at your own risks.
+
+# Will error if the minimal version of diffusers is not installed. 
+# Remove at your own risks.
 check_min_version("0.19.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
@@ -54,12 +61,13 @@ def _extract_into_tensor(arr, timesteps, broadcast_shape):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Simple example of a training script.")
+    parser = argparse.ArgumentParser(description="DDVM training")
     parser.add_argument(
         "--output_dir",
         type=str,
         default="ddpm-model-64",
-        help="The output directory where the model predictions and checkpoints will be written.",
+        help="The output directory where the model predictions "
+             "and checkpoints will be written.",
     )
     parser.add_argument("--overwrite_output_dir", action="store_true")
     parser.add_argument(
@@ -69,25 +77,26 @@ def parse_args():
         help="The directory where the downloaded models and datasets will be stored.",
     )
     parser.add_argument(
-        "--train_batch_size", type=int, default=16, help="Batch size (per device) for the training dataloader."
+        "--train_batch_size", type=int, default=16, 
+        help="Batch size (per device) for the training dataloader."
     )
     parser.add_argument('--image_size', type=int, nargs='+', default=[384, 512])
     parser.add_argument(
         "--dataloader_num_workers",
         type=int,
         default=0,
-        help=(
-            "The number of subprocesses to use for data loading. 0 means that the data will be loaded in the main"
-            " process."
-        ),
+        help= "The number of subprocesses to use for data loading. "
+              "0 means that the data will be loaded in the main process."
     )
     parser.add_argument('--num_steps', type=int, default=100000)
-    parser.add_argument("--save_images_steps", type=int, default=500, help="How often to save images during training.")
+    parser.add_argument("--save_images_steps", type=int, default=500, 
+                        help="How often to save images during training.")
     parser.add_argument(
         "--gradient_accumulation_steps",
         type=int,
         default=1,
-        help="Number of updates steps to accumulate before performing a backward/update pass.",
+        help="Number of updates steps to accumulate before "
+            "performing a backward/update pass.",
     )
     
     parser.add_argument(
@@ -97,9 +106,11 @@ def parse_args():
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     
-    parser.add_argument("--max_flow", type=float, default=None, help="exclude extremely large displacements")
+    parser.add_argument("--max_flow", type=float, default=None, 
+                        help="exclude extremely large displacements")
     parser.add_argument(
-        "--lr_warmup_steps", type=int, default=500, help="Number of steps for the warmup in the lr scheduler."
+        "--lr_warmup_steps", type=int, default=500, 
+        help="Number of steps for the warmup in the lr scheduler."
     )
     parser.add_argument("--adam_beta1", type=float, default=0.95, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
@@ -112,17 +123,18 @@ def parse_args():
         action="store_true",
         help="Whether to use Exponential Moving Average for the final model weights.",
     )
-    parser.add_argument("--ema_inv_gamma", type=float, default=1.0, help="The inverse gamma value for the EMA decay.")
-    parser.add_argument("--ema_power", type=float, default=3 / 4, help="The power value for the EMA decay.")
-    parser.add_argument("--ema_max_decay", type=float, default=0.9999, help="The maximum decay magnitude for EMA.")
+    parser.add_argument("--ema_inv_gamma", type=float, default=1.0, 
+                        help="The inverse gamma value for the EMA decay.")
+    parser.add_argument("--ema_power", type=float, default=3 / 4, 
+                        help="The power value for the EMA decay.")
+    parser.add_argument("--ema_max_decay", type=float, default=0.9999, 
+                        help="The maximum decay magnitude for EMA.")
     parser.add_argument(
         "--logging_dir",
         type=str,
-        default="logs_nfs",
-        help=(
-            "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. Will default to"
-            " *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
-        ),
+        default="logs",
+        help= "[TensorBoard](https://www.tensorflow.org/tensorboard) log directory. "
+              "Will default to *output_dir/runs/**CURRENT_DATETIME_HOSTNAME***."
     )
     
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
@@ -153,17 +165,15 @@ def parse_args():
         "--checkpointing_steps",
         type=int,
         default=500,
-        help=(
-            "Save a checkpoint of the training state every X updates."
-            " These checkpoints are only suitable for resuming"
-            " training using `--resume_from_checkpoint`."
-        ),
+        help= "Save a checkpoint of the training state every X updates."
+              " These checkpoints are only suitable for resuming"
+              " training using `--resume_from_checkpoint`."
     )
     parser.add_argument(
         "--checkpoints_total_limit",
         type=int,
         default=None,
-        help=("Max number of checkpoints to store."),
+        help= "Max number of checkpoints to store.",
     )
     parser.add_argument(
         "--lr_scheduler",
@@ -179,10 +189,9 @@ def parse_args():
         "--resume_from_checkpoint",
         type=str,
         default=None,
-        help=(
-            "Whether training should be resumed from a previous checkpoint. Use a path saved by"
-            ' `--checkpointing_steps`, or `"latest"` to automatically select the last available checkpoint.'
-        ),
+        help = "Whether training should be resumed from a previous checkpoint. "
+               "Use a path saved by `--checkpointing_steps`, "
+               "or `latest` to automatically select the last available checkpoint."
     )
     parser.add_argument('--stage', help="determines which dataset to use for training")
     parser.add_argument("--it_aug", action="store_true", help="Whether to use aug from RAFT-it.")
@@ -193,6 +202,10 @@ def parse_args():
     parser.add_argument("--schedule_sampler", type=str, default='normal_left', help="choose the noise distribution")
     parser.add_argument("--Unet_type", type=str, default='SRUnet256', help="determines which UNet used")
     parser.add_argument("--corr_index", type=str, default='noised_flow', help="args for the UNet based on correlation volume")
+
+
+    # added by CCJ;
+    parser.add_argument('--data_dir', type = str, default= "datasets/", help="input data dir")
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -210,25 +223,28 @@ def main(args):
     else:
         print('error: Unet type undefined!')
         raise NotImplementedError
-
+    
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
-                project_dir=args.output_dir, 
-                logging_dir=logging_dir
+                project_dir = args.output_dir, 
+                logging_dir = logging_dir
             )
 
-    kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))  # a big number for high resolution or big dataset
+    # a big number for high resolution or big dataset
+    kwargs = InitProcessGroupKwargs(timeout=timedelta(seconds=7200))  
+    
     accelerator = Accelerator(
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
-        mixed_precision=args.mixed_precision,
-        log_with="tensorboard",
-        project_config=accelerator_project_config,
-        kwargs_handlers=[kwargs],
+        gradient_accumulation_steps = args.gradient_accumulation_steps,
+        mixed_precision = args.mixed_precision,
+        log_with = "tensorboard",
+        project_config = accelerator_project_config,
+        kwargs_handlers = [kwargs],
     )
 
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
-        # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
+        # create custom saving & loading hooks so that 
+        # `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             if args.use_ema:
                 ema_model.save_pretrained(os.path.join(output_dir, "unet_ema"))
@@ -276,7 +292,10 @@ def main(args):
         os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize the model
-    model = model_class(channels=8, channels_out=2, sample_size=args.image_size, corr_index=args.corr_index)
+    model = model_class(channels=8, channels_out=2, 
+                        sample_size=args.image_size, 
+                        corr_index=args.corr_index
+                    )
     # Create EMA for the model.
     if args.use_ema:
         ema_model = EMAModel(
@@ -293,7 +312,8 @@ def main(args):
 
     if args.resume_from_model_only is not None:
         print('Loading model weights from', args.resume_from_model_only, '/pytorch_model.bin')
-        model.load_state_dict(torch.load(args.resume_from_model_only + '/pytorch_model.bin', map_location='cpu'))
+        model.load_state_dict(
+                torch.load(args.resume_from_model_only + '/pytorch_model.bin', map_location='cpu'))
         if args.use_ema:
             load_model = EMAModel.from_pretrained(os.path.join(args.resume_from_model_only, "unet_ema"), model_class)
             ema_model.load_state_dict(load_model.state_dict())
@@ -318,20 +338,23 @@ def main(args):
     # Initialize the optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
+        lr = args.learning_rate,
+        betas = (args.adam_beta1, args.adam_beta2),
+        weight_decay = args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
 
     # Initializing the dataset
-    train_dataloader = fetch_dataloader(args, rank=accelerator.process_index, world_size=accelerator.num_processes)
+    train_dataloader = fetch_dataloader(args, 
+                                        rank = accelerator.process_index, 
+                                        world_size = accelerator.num_processes
+                                    )
 
     # Initialize the learning rate scheduler
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
         optimizer=optimizer,
-        num_warmup_steps=args.lr_warmup_steps * args.gradient_accumulation_steps * accelerator.num_processes,
+        num_warmup_steps= args.lr_warmup_steps * args.gradient_accumulation_steps * accelerator.num_processes,
         num_training_steps=args.num_steps
     )
 
@@ -345,7 +368,14 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = args.train_batch_size
-    model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)  # train_dataloader
+    if 1:
+        model, optimizer, lr_scheduler = accelerator.prepare(model, optimizer, lr_scheduler)  # train_dataloader
+    if 0:
+        model, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+                                                            model, optimizer, 
+                                                            train_dataloader, 
+                                                            lr_scheduler)
+    
 
     if args.use_ema:
         ema_model.to(accelerator.device)
@@ -392,6 +422,7 @@ def main(args):
 
             # resume_global_step = global_step * args.gradient_accumulation_steps
             # resume_step = resume_global_step % (num_update_steps_per_epoch * args.gradient_accumulation_steps)
+    
     if args.resume_from_model_only or args.resume_from_checkpoint:
         first_epoch = global_step // num_update_steps_per_epoch
         for i in range(global_step):
@@ -412,21 +443,30 @@ def main(args):
             model.train()
 
             for k in batch:
-                if type(batch[k]) == torch.Tensor:
+                if isinstance(batch[k], torch.Tensor):
                     batch[k] = batch[k].to(model.device)
             batch['flow'] = batch["target"].clone()
             bsz, _, h, w = batch["target"].shape
+            
             if args.normalize_range:
                 batch["target"] = torch.clamp(batch["target"] * torch.tensor([1 / w, 1 / h]).view(1, 2, 1, 1).to(model.device), -1, 1)
+            
             # Sample noise that we'll add to the images
-            noise = torch.randn(batch["target"].shape, dtype=(torch.float32 if args.mixed_precision == "no" else torch.float16)).to(batch["target"].device)
+            noise = torch.randn(batch["target"].shape, 
+                                dtype=(torch.float32 if args.mixed_precision == "no" else torch.float16)
+                                ).to(batch["target"].device)
+            
             # Sample a random timestep for each image
             # timesteps = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,), device=batch["target"].device).long()
             timesteps, weights = schedule_sampler.sample(bsz, batch["target"].device)
+            
             # Add noise to the clean images according to the noise magnitude at each timestep
             # (this is the forward diffusion process)
             noisy_target = noise_scheduler.add_noise(batch["target"], noise, timesteps)
-            inputs = torch.cat([2 * (batch["image0"] / 255.0) - 1.0, 2 * (batch["image1"] / 255.0) - 1.0, noisy_target], dim=1)
+            img0 = 2 * (batch["image0"] / 255.0) - 1.0
+            img1 = 2 * (batch["image1"] / 255.0) - 1.0
+            inputs = torch.cat([img0, img1, noisy_target], dim=1)
+            
             if args.max_flow is None:
                 valid = (batch['valid'] >= 0.5)
             else:
@@ -435,10 +475,19 @@ def main(args):
 
             with accelerator.accumulate(model):
                 # Predict the noise residual
-                model_output = model(inputs.to(model.dtype), timesteps, normalize=args.normalize_range).sample
+                model_output = model(
+                                    sample = inputs.to(model.dtype), 
+                                    timestep = timesteps, 
+                                    normalize = args.normalize_range).sample
+                
                 if args.prediction_type == "epsilon":
-                    loss = valid[:, None] * (model_output - noise).abs()  # this could have different weights!
-                    metrics = {'loss': loss.item(), "lr": lr_scheduler.get_last_lr()[0], "step": global_step}
+                    # this could have different weights!
+                    loss = valid[:, None] * (model_output - noise).abs() 
+                    metrics = {'loss': loss.item(), 
+                               "lr": lr_scheduler.get_last_lr()[0], 
+                               "step": global_step
+                              }
+                
                 elif args.prediction_type == "sample":
                     # alpha_t = _extract_into_tensor(noise_scheduler.alphas_cumprod, timesteps, (batch["target"].shape[0], 1, 1, 1))
                     # snr_weights = alpha_t / (1 - alpha_t)
@@ -450,9 +499,8 @@ def main(args):
                         loss_mag = torch.sum(loss ** 2, dim=1).sqrt()
                         mask = loss_mag > 1000
                         if torch.any(mask):
-                            logger.info("[Found extrem epe. Filtered out. Max is {}. Ratio is {}]".format(torch.max(loss_mag),
-                                                                                                    torch.mean(
-                                                                                                        mask.float())))
+                            logger.info("[Found extrem epe. Filtered out. " + \
+                                        f"Max is {torch.max(loss_mag)}. Ratio is {mask.float().mean()}]")
                             valid = valid & (~mask)
                     loss = weights.view(bsz, 1, 1, 1) * valid[:, None] * loss
                     mask = torch.isnan(loss)
@@ -464,12 +512,17 @@ def main(args):
                         model_output_flow = model_output * torch.tensor([w, h]).view(1, 2, 1, 1).to(model.device)
                     epe = torch.sum((model_output_flow - batch["flow"]) ** 2, dim=1).sqrt()
                     epe = epe.view(-1)[valid.view(-1)]
-                    metrics = {'loss': loss.mean().item(), 'epe': epe.mean().item(),
-                               '1px': (epe < 1).float().mean().item(), '3px': (epe < 3).float().mean().item(),
-                               '5px': (epe < 5).float().mean().item(), "lr": lr_scheduler.get_last_lr()[0],
-                               "step": global_step}
+                    metrics = {'loss': loss.mean().item(), 
+                               'epe': epe.mean().item(),
+                               '1px': (epe < 1).float().mean().item(), 
+                               '3px': (epe < 3).float().mean().item(),
+                               '5px': (epe < 5).float().mean().item(), 
+                               "lr": lr_scheduler.get_last_lr()[0],
+                               "step": global_step
+                            }
                 else:
                     raise ValueError(f"Unsupported prediction type: {args.prediction_type}")
+                
                 loss = loss.mean()
                 accelerator.backward(loss)
 
@@ -479,14 +532,18 @@ def main(args):
                 if not accelerator.optimizer_step_was_skipped:
                     lr_scheduler.step()
                 optimizer.zero_grad()
-            # Checks if the accelerator has performed an optimization step behind the scenes
+            
+            # Checks if the accelerator has performed 
+            # an optimization step behind the scenes
             if accelerator.sync_gradients:
                 if args.use_ema:
                     ema_model.step(model.parameters())
+                
                 progress_bar.update(1)
                 global_step += 1
                 if global_step > args.num_steps:
                     should_keep_training = False
+                
                 # Generate sample images for visual inspection
                 if global_step % args.save_images_steps == 0:
                     if accelerator.is_main_process:
@@ -506,12 +563,13 @@ def main(args):
 
                         # run pipeline in inference (sample random noise and denoise)
                         images = pipeline(
-                            inputs=inputs[0].unsqueeze(0),  # just sample one example
-                            batch_size=1,
-                            num_inference_steps=args.ddpm_num_steps,
-                            output_type="tensor",
-                            normalize=args.normalize_range
+                            inputs = inputs[0].unsqueeze(0),  # just sample one example
+                            batch_size = 1,
+                            num_inference_steps = args.ddpm_num_steps,
+                            output_type = "tensor",
+                            normalize = args.normalize_range
                         ).images
+                        
                         # for visualization
                         flo = flow_viz.flow_to_image(images.float().cpu().permute(0, 2, 3, 1).numpy()[0])
                         flo_gt = flow_viz.flow_to_image((batch["flow"]*batch['valid'][:, None])[0].float().cpu().permute(1, 2, 0).numpy())

@@ -221,6 +221,7 @@ class AutoFlow(FlowDataset):
             + glob(osp.join(root, 'static_40k_png_3_of_4/*')) 
             + glob(osp.join(root, 'static_40k_png_4_of_4/*'))
             )
+        #print (f"found {len(batches)} samples for AutoFlow dataset")
 
         for i in range(len(batches)):
             batchid = batches[i]

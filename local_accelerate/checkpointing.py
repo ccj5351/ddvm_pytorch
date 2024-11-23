@@ -28,13 +28,16 @@ from accelerate.utils import (
     SCALER_NAME,
     SCHEDULER_NAME,
     get_pretty_name,
-    is_tpu_available,
+    #is_tpu_available,
+    is_torch_xla_available,
     is_xpu_available,
     save,
 )
 
 
-if is_tpu_available(check_device=False):
+#if is_tpu_available(check_device=False):
+#    import torch_xla.core.xla_model as xm
+if is_torch_xla_available(check_is_tpu=True):
     import torch_xla.core.xla_model as xm
 
 from accelerate.logging import get_logger
@@ -105,7 +108,9 @@ def save_accelerator_state(
         states["torch_xpu_manual_seed"] = torch.xpu.get_rng_state_all()
     else:
         states["torch_cuda_manual_seed"] = torch.cuda.get_rng_state_all()
-    if is_tpu_available():
+    #if is_tpu_available():
+    #    states["xm_seed"] = xm.get_rng_state()
+    if is_torch_xla_available():
         states["xm_seed"] = xm.get_rng_state()
     output_states_file = os.path.join(output_dir, states_name)
     torch.save(states, output_states_file)
@@ -191,7 +196,10 @@ def load_accelerator_state(
             torch.xpu.set_rng_state_all(states["torch_xpu_manual_seed"])
         else:
             torch.cuda.set_rng_state_all(states["torch_cuda_manual_seed"])
-        if is_tpu_available():
+        
+        #if is_tpu_available():
+        #    xm.set_rng_state(states["xm_seed"])
+        if is_torch_xla_available():
             xm.set_rng_state(states["xm_seed"])
         logger.info("All random states loaded successfully")
     except Exception:

@@ -12,7 +12,6 @@ import torch
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 from torch import nn, einsum
-from torch.cuda.amp import autocast
 from torch.special import expm1
 import torchvision.transforms as T
 
@@ -50,7 +49,8 @@ except ImportError:
     FLASH_AVAILABLE = False
 
 
-# predefined unets, with configs lining up with hyperparameters in appendix of paper
+# predefined unets, with configs lining up with 
+# hyperparameters in appendix of paper;
 class RAFT_Unet(Unet, ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(self, channels, channels_out, sample_size, add_dim=(0, 0, 324, 0), corr_index='noised_flow', **kwargs):
@@ -104,6 +104,7 @@ class RAFT_Unet(Unet, ModelMixin, ConfigMixin):
             coords1 = coords1 + x[:, 6:8, ::8, ::8] * torch.tensor([W, H]).view(1, 2, 1, 1).to(x) / 8
         else:
             coords1 = coords1 + x[:, 6:8, ::8, ::8] / 8
+        
         coords1 = coords1.detach()
         corr = corr_fn(coords1)  # index correlation volume
 
@@ -126,7 +127,8 @@ class RAFT_Unet(Unet, ModelMixin, ConfigMixin):
         t = self.to_time_cond(time_hiddens)
 
         # add lowres time conditioning to time hiddens
-        # and add lowres time tokens along sequence dimension for attention
+        # and add lowres time tokens along sequence dimension 
+        # for attention
 
         # text conditioning
         text_tokens = None
@@ -186,7 +188,8 @@ class RAFT_Unet(Unet, ModelMixin, ConfigMixin):
             up_hiddens.append(x.contiguous())
             x = upsample(x)
 
-        # whether to combine all feature maps from upsample blocks
+        # whether to combine all feature maps from 
+        # upsample blocks
         x = self.upsample_combiner(x, up_hiddens)
 
         # final top-most residual if needed

@@ -76,9 +76,10 @@ from accelerate.utils import (
     is_ipex_available,
     is_megatron_lm_available,
     is_npu_available,
-    is_safetensors_available,
+    #is_safetensors_available,
     is_torch_version,
-    is_tpu_available,
+    #is_tpu_available,
+    is_torch_xla_available,
     is_xpu_available,
     load_fsdp_model,
     load_fsdp_optimizer,
@@ -129,9 +130,11 @@ if is_megatron_lm_available():
 from torch.distributed.algorithms.join import Join
 
 
-if is_tpu_available(check_device=False):
+#if is_tpu_available(check_device=False):
+#    import torch_xla.core.xla_model as xm
+#    import torch_xla.distributed.xla_multiprocessing as xmp
+if is_torch_xla_available(check_is_tpu=True):
     import torch_xla.core.xla_model as xm
-    import torch_xla.distributed.xla_multiprocessing as xmp
 
 
 try:
@@ -2346,7 +2349,9 @@ class Accelerator:
         ```
         """
 
-        if safe_serialization and not is_safetensors_available():
+        #if safe_serialization and not is_safetensors_available():
+        # removed is_safetensors_available(), see issue #4243: https://github.com/huggingface/diffusers/issues/4243
+        if safe_serialization:
             raise ImportError("`safe_serialization` requires the `safetensors library: `pip install safetensors`.")
 
         if os.path.isfile(save_directory):
