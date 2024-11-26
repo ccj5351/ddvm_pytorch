@@ -37,9 +37,54 @@ LR_SCHEDULER='cosine'
 EXP_NAME="exp01_bl_ddvm_$UNET_TYPE"
 EXP_NAME="${EXP_NAME}_bs${BATCH_SIZE}Gn${GPU_NUM}_${MACHINE_NAME}"
 OUTPUT_DIR="$PROJ_ROOT/experiment-output-nfs/$EXP_NAME"
-echo "OUTPUT_DIR=$OUTPUT_DIR"
-#exit
 
+
+RESUME_FROM_CHECKPOINT="experiment-output-nfs/exp01_bl_ddvm_RAFT_Unet_bs12Gn6_a6ks3-2024-11-25_23:56:56"
+#RESUME_FROM_CHECKPOINT=""
+
+# if resume with latest checkpoints, have to specify your EXP_NAME
+RESUME_FROM_CHECKPOINT="latest"
+EXP_NAME="exp01_bl_ddvm_RAFT_Unet_bs12Gn6_a6ks3-2024-11-25_23:56:56"
+OUTPUT_DIR="$PROJ_ROOT/experiment-output-nfs/$EXP_NAME"
+
+# if not resume, we add random (i.e., cur time) to output dir;
+# ow, we use 
+if [ "$RESUME_FROM_CHECKPOINT" = "" ]; then
+    # Get the current time in the desired format
+    #CURRENT_TIME=$(date '+%Y-%m-%d_%H:%M:%S')
+    CURRENT_TIME=$(date '+%Y-%m-%d')
+    OUTPUT_DIR="$OUTPUT_DIR-$CURRENT_TIME"
+    echo "Training from scratch ..."
+    echo "OUTPUT_DIR=$OUTPUT_DIR"
+    echo "RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
+
+elif [ "$RESUME_FROM_CHECKPOINT" = "latest" ]; then
+    echo "Resuming training using latest checkpoint ... "
+    echo "Please make sure your OUTPUT_DIR is correct ..."
+
+    # Prompt the user for confirmation
+    read -p "It was $OUTPUT_DIR. Do you want to continue? (y/n): " response
+
+    # Convert response to lowercase for consistency
+    response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+    if [[ "$response" == "y" || "$response" == "yes" ]]; then
+        echo "You chose Yes. Proceeding..."
+    else
+        echo "You chose No. Exiting..."
+        exit 1
+    fi
+    echo "[***] OUTPUT_DIR=$OUTPUT_DIR"
+    echo "[***] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
+else
+    echo "Resuming training ... "
+    echo "OUTPUT_DIR should be the same as RESUME_FROM_CHECKPOINT ..."
+    RESUME_FROM_CHECKPOINT="$PROJ_ROOT/$RESUME_FROM_CHECKPOINT"
+    OUTPUT_DIR="$RESUME_FROM_CHECKPOINT"
+    echo "[***] OUTPUT_DIR=$OUTPUT_DIR"
+    echo "[***] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
+fi
+
+#exit
 
 #flag=false
 flag=true
@@ -74,5 +119,6 @@ if [ "$flag" = true ]; then
         --it_aug \
         --use_ema \
         --add_gaussian_noise \
+        --resume_from_checkpoint $RESUME_FROM_CHECKPOINT \
         --normalize_range
 fi

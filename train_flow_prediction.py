@@ -224,12 +224,13 @@ def main(args):
     else:
         print('error: Unet type undefined!')
         raise NotImplementedError
-     
-    timeStamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
-    if args.output_dir.endswith("/"):
-        args.output_dir = args.output_dir[:-1] + "-" + timeStamp
-    else:
-        args.output_dir += "-" + timeStamp
+    
+    # # add current time to dir if not resuming;
+    # timeStamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+    # if args.output_dir.endswith("/"):
+    #     args.output_dir = args.output_dir[:-1] + "-" + timeStamp
+    # else:
+    #     args.output_dir += "-" + timeStamp
 
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
@@ -607,7 +608,7 @@ def main(args):
                         tracker.add_images('train_samples/flo_pred', flo, global_step, dataformats='HWC')
                         tracker.add_images('train_samples/flo_gt', flo_gt, global_step, dataformats='HWC')
                         tracker.add_images('train_samples/concat_img', save_img / 255, global_step, dataformats='CHW')
-                        tracker.add_images('train_samples/warp_by_pre', pred_warpimg1 / 255, global_step, dataformats='CHW')
+                        tracker.add_images('train_samples/warp_by_pred', pred_warpimg1 / 255, global_step, dataformats='CHW')
 
                 if global_step % args.checkpointing_steps == 0:
                     # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
@@ -660,17 +661,11 @@ def main(args):
                         #print ("????? done here 0")
             if args.use_ema:
                 metrics["ema_decay"] = ema_model.cur_decay_value
-                #print (f"????? rank = {accelerator.process_index} done here 1, ")
-            #print (f"????? rank = {accelerator.process_index} done here 3, ")
             progress_bar.set_postfix(**metrics)
-            #print (f"????? rank = {accelerator.process_index} done here 4, ")
             accelerator.log(metrics, step=global_step)
-            #print (f"????? rank = {accelerator.process_index} done here 5, ")
         progress_bar.close()
-        #print (f"????? rank = {accelerator.process_index} done here 6, ")
         accelerator.wait_for_everyone()
-        #print (f"????? rank = {accelerator.process_index} done here 7, ")
-        # for next epoch training;
+        # end of one epoch training;
 
     accelerator.end_training()
 
