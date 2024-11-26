@@ -17,7 +17,10 @@ def fetch_dataloader(args, rank=0, world_size=1):
                 }
         autoflow = AutoFlow(aug_params, 
                             root = os.path.join(args.data_dir, 'autoflow'), 
-                            it_aug = args.it_aug, n_sample=40000
+                            it_aug = args.it_aug, 
+                            #n_sample = 40000
+                            n_sample = None
+                            #n_sample = 400
                             )
         train_dataset = ConcatDataset([autoflow, ])
     else:

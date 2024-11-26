@@ -37,7 +37,8 @@ class FlowDataset(data.Dataset):
         if aug_params is not None:
             if not it_aug and 'add_gaussian_noise' in aug_params:
                 aug_params.pop('add_gaussian_noise')
-            if it_aug:
+            
+            if it_aug: # use aug from RAFT-it
                 params = it_get_params('pwc')
                 if not aug_params['add_gaussian_noise']:
                     params.noise_std_range = 0.0
@@ -214,15 +215,19 @@ class AutoFlow(FlowDataset):
                 it_aug=True, 
                 n_sample=None):
         
-        super(AutoFlow, self).__init__(aug_params, it_aug=it_aug, n_sample=n_sample)
+        super(AutoFlow, self).__init__(aug_params, 
+                                       it_aug=it_aug, 
+                                       n_sample=n_sample)
         batches = sorted(
             glob(osp.join(root, 'static_40k_png_1_of_4/*')) 
             + glob(osp.join(root, 'static_40k_png_2_of_4/*'))
             + glob(osp.join(root, 'static_40k_png_3_of_4/*')) 
             + glob(osp.join(root, 'static_40k_png_4_of_4/*'))
             )
-        #print (f"found {len(batches)} samples for AutoFlow dataset")
-
+        print (f"found {len(batches)} samples for AutoFlow dataset")
+        if n_sample is not None and 0 < n_sample <  len(batches):
+            batches = batches[:n_sample]
+            print (f"extract subset: selected {n_sample} AutoFlow samples for quick training ...")
         for i in range(len(batches)):
             batchid = batches[i]
             self.flow_list += [osp.join(batchid, 'forward.flo')]
@@ -281,22 +286,44 @@ class FlyingThings3D(FlowDataset):
 
 
 class KITTI(FlowDataset):
-    def __init__(self, aug_params=None, split='training', root='datasets/KITTI', resize_for_test=False):
-        super(KITTI, self).__init__(aug_params, sparse=True, resize_for_test=resize_for_test)
+    def __init__(self, aug_params=None, 
+                split='training', 
+                root='datasets/KITTI', 
+                resize_for_test=False,
+                n_sample=None
+                ):
+        super(KITTI, self).__init__(aug_params, 
+                                    sparse=True, 
+                                    resize_for_test = resize_for_test,
+                                    n_sample= n_sample
+                                    )
+        
         if split == 'testing':
             self.is_test = True
 
         root = osp.join(root, split)
         images1 = sorted(glob(osp.join(root, 'image_2/*_10.png')))
         images2 = sorted(glob(osp.join(root, 'image_2/*_11.png')))
+        
+        if split == 'training':
+            flow_list = sorted(glob(osp.join(root, 'flow_occ/*_10.png')))
+        
+        print (f"found {len(images1)} samples for KITTI-{split} dataset")
+        if n_sample is not None and 0 < n_sample <  len(images1):
+            images1 = images1[:n_sample]
+            images2 = images2[:n_sample]
+            if split == 'training':
+                flow_list = flow_list[:n_sample]
+            print (f"extract subset: selected {n_sample} KITTI samples for quick experiment ...")
 
         for img1, img2 in zip(images1, images2):
             frame_id = img1.split('/')[-1]
             self.extra_info += [[frame_id]]
             self.image_list += [[img1, img2]]
-
+        
         if split == 'training':
-            self.flow_list = sorted(glob(osp.join(root, 'flow_occ/*_10.png')))
+            self.flow_list = flow_list
+
 
 
 class HD1K(FlowDataset):

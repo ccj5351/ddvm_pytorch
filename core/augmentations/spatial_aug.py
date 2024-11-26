@@ -239,17 +239,21 @@ class SpatialAug(object):
       ]
 
       sum_val0 = tf.math.reduce_sum(
-          tf.to_float(
+          tf.cast(
               tf.math.abs(
                   self.grid_transform(
                       cornergrid, transmat0, gridsize=[float(h),
-                                                       float(w)])) > 1))
+                                                       float(w)])) > 1, 
+              dtype=tf.float32)
+          )
       sum_val1 = tf.math.reduce_sum(
-          tf.to_float(
+          tf.cast(
               tf.math.abs(
                   self.grid_transform(
                       cornergrid, transmat1, gridsize=[float(h),
-                                                       float(w)])) > 1))
+                                                       float(w)])) > 1, 
+              dtype=tf.float32)
+          )
       bool_val = tf.logical_or(
           tf.math.equal((sum_val0 + sum_val1), 0), self.black)
 
@@ -339,8 +343,9 @@ def apply(images, forward_flow, augmentation_params, is_hard_augment):
       output_shape=output_shape)
   # Mark invalid pixels (extreme value or out-of-boundary)
   invalid_mask = tf.logical_or(
-      tf.abs(aug_flow) > tf.to_float(INVALID_THRESHOLD), aug_all_ones < 1.0)
-  # invalid_mask = tf.abs(aug_flow) > tf.to_float(INVALID_THRESHOLD)
+      tf.abs(aug_flow) > tf.cast(INVALID_THRESHOLD, dtype=tf.float32),
+      aug_all_ones < 1.0
+      )
   invalid_flow = tf.ones(aug_flow.get_shape()) * INVALID_FLOW_VALUE
 
   # Transform second image
@@ -366,8 +371,8 @@ def apply(images, forward_flow, augmentation_params, is_hard_augment):
   # Compute augmented optical flow.
   # Compute position in transformed first image.
   x, y = tf.meshgrid(tf.range(crop_width), tf.range(crop_height))
-  x = tf.to_float(x)
-  y = tf.to_float(y)
+  x = tf.cast(x, dtype = tf.float32)
+  y = tf.cast(y, dtype = tf.float32)
   # Map to coordinates of first image.
   x0 = x * transform[0] + y * transform[1] + transform[2]
   y0 = x * transform[3] + y * transform[4] + transform[5]
@@ -402,7 +407,7 @@ def apply(images, forward_flow, augmentation_params, is_hard_augment):
   # print('forward_flow385', np.max(forward_flow.numpy()))
 
   # Augmentation make flip signs of flow. Flip to the same extreme value
-  invalid_mask = tf.abs(forward_flow) > tf.to_float(INVALID_THRESHOLD)
+  invalid_mask = tf.abs(forward_flow) > tf.cast(INVALID_THRESHOLD, dtype= tf.float32)
   invalid_flow = tf.ones(forward_flow.get_shape())*INVALID_FLOW_VALUE
   forward_flow = tf.where(invalid_mask, invalid_flow, forward_flow)
   # print('forward_flow390', np.max(forward_flow.numpy()))
@@ -452,10 +457,10 @@ def _rejection_sample_spatial_aug_parameters(input_image_height,
   z2 = tf.math.log(
       tf.sqrt(stretch_factor_x2 / stretch_factor_y2 + 1e-9) + 1e-9)  # squeeze
 
-  s2 = tf.to_float(s1) + tf.to_float(s2 -
-                                     s1) * augmentation_params.schedule_coeff
-  z2 = tf.to_float(z1) + tf.to_float(z2 -
-                                     z1) * augmentation_params.schedule_coeff
+  s2 = tf.cast(s1, dtype=tf.float32) + tf.cast(s2-s1, 
+                                              dtype=tf.float32) * augmentation_params.schedule_coeff
+  z2 = tf.cast(z1, dtype=tf.float32) + tf.cast(z2-z1, 
+                                              dtype=tf.float32) * augmentation_params.schedule_coeff
 
   stretch_factor_x2 = tf.exp(s2 + z2)
   stretch_factor_y2 = tf.exp(s2 - z2)

@@ -13,9 +13,15 @@ def validate_kitti(pipeline, args=None):
     val_dataset = KITTI(
         aug_params, split='training', 
         resize_for_test=True,
-        root= os.path.join(args.data_dir, "KITTI_2015")
+        root= os.path.join(args.data_dir, "KITTI_2015"),
+        n_sample = 8 
         )
-    val_loader = data.DataLoader(val_dataset, batch_size=args.train_batch_size, pin_memory=True, shuffle=False, num_workers=4)
+    val_loader = data.DataLoader(val_dataset, 
+                                batch_size=args.train_batch_size, 
+                                pin_memory=True, 
+                                shuffle=False, 
+                                num_workers=4
+                                )
 
     out_list, epe_list = [], []
     for batch in tqdm(val_loader):
@@ -24,13 +30,15 @@ def validate_kitti(pipeline, args=None):
                 batch[k] = batch[k].cuda()
 
         # run pipeline in inference (sample random noise and denoise)
-        inputs = torch.cat([2 * (batch["image0"] / 255.0) - 1.0, 2 * (batch["image1"] / 255.0) - 1.0], dim=1)
+        img0 = 2 * (batch["image0"] / 255.0) - 1.0
+        img1 = 2 * (batch["image1"] / 255.0) - 1.0
+        inputs = torch.cat([img0, img1], dim=1)
         pipeline.unet = pipeline.unet.to(torch.bfloat16)
         images = pipeline(
-            inputs=inputs.to(torch.bfloat16),  # just sample one example
-            batch_size=inputs.shape[0],
-            num_inference_steps=args.ddpm_num_steps,
-            output_type="tensor",
+            inputs = inputs.to(torch.bfloat16),  # just sample one example
+            batch_size = inputs.shape[0],
+            num_inference_steps = args.ddpm_num_steps,
+            output_type = "tensor",
             normalize=args.normalize_range
         ).images
 
@@ -50,5 +58,5 @@ def validate_kitti(pipeline, args=None):
     epe = np.mean(epe_list)
     f1 = 100 * np.mean(out_list)
 
-    print("Validation KITTI: %f, %f" % (epe, f1))
+    print(f"[***] Done! Validation KITTI: {epe:.4f}(epe), {f1:.4f}%(f1)")
     return {'kitti-epe': epe, 'kitti-f1': f1}

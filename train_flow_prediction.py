@@ -7,6 +7,7 @@ from datetime import timedelta
 from packaging import version
 from tqdm.auto import tqdm
 import torch
+from datetime import datetime
 
 import accelerate
 import datasets
@@ -223,7 +224,13 @@ def main(args):
     else:
         print('error: Unet type undefined!')
         raise NotImplementedError
-    
+     
+    timeStamp = datetime.now().strftime('%Y-%m-%d_%H:%M:%S')
+    if args.output_dir.endswith("/"):
+        args.output_dir = args.output_dir[:-1] + "-" + timeStamp
+    else:
+        args.output_dir += "-" + timeStamp
+
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
                 project_dir = args.output_dir, 
@@ -364,7 +371,7 @@ def main(args):
         return [total_num, trainable_num]
 
     param_info = get_parameter_number(model)
-    accelerator.print(f'########## Total:{param_info[0] / 1e6}M, Trainable:{param_info[1] / 1e6}M ##################')
+    accelerator.print(f'########## Total:{param_info[0] / 1e6} M, Trainable:{param_info[1] / 1e6} M ##################')
 
     # Prepare everything with our `accelerator`.
     accelerator.state.deepspeed_plugin.deepspeed_config["train_micro_batch_size_per_gpu"] = args.train_batch_size
@@ -539,7 +546,7 @@ def main(args):
                 if args.use_ema:
                     ema_model.step(model.parameters())
                 
-                progress_bar.update(1)
+                progress_bar.update(100)
                 global_step += 1
                 if global_step > args.num_steps:
                     should_keep_training = False
@@ -548,8 +555,10 @@ def main(args):
                 if global_step % args.save_images_steps == 0:
                     if accelerator.is_main_process:
                         # visualize training
-                        denoised_flo = flow_viz.flow_to_image(model_output[0].float().detach().cpu().permute(1, 2, 0).numpy())
-                        noised_flow = flow_viz.flow_to_image(noisy_target[0].float().cpu().permute(1, 2, 0).numpy())
+                        denoised_flo = flow_viz.flow_to_image(
+                            model_output[0].float().detach().cpu().permute(1, 2, 0).numpy())
+                        noised_flow = flow_viz.flow_to_image(
+                            noisy_target[0].float().cpu().permute(1, 2, 0).numpy())
 
                         unet = accelerator.unwrap_model(model)
                         if args.use_ema:
@@ -577,11 +586,11 @@ def main(args):
                         gt_warpimg1 = backwarp(batch['image1'][0].unsqueeze(0), batch['flow'][0].unsqueeze(0))
                         gt_warpimg1 = gt_warpimg1[0] * batch['valid'][:, None][0]
 
-                        pre_warpimg1 = backwarp(batch['image1'][0].unsqueeze(0), images)[0]
-                        pre_valid_warpimg1 = pre_warpimg1 * batch['valid'][:, None][0]
+                        pred_warpimg1 = backwarp(batch['image1'][0].unsqueeze(0), images)[0]
+                        pred_valid_warpimg1 = pred_warpimg1 * batch['valid'][:, None][0]
 
                         gt_img = torch.cat([batch["image0"][0], batch["image1"][0]], dim=-1)
-                        warp_img1 = torch.cat([gt_warpimg1, pre_valid_warpimg1], dim=-1)
+                        warp_img1 = torch.cat([gt_warpimg1, pred_valid_warpimg1], dim=-1)
                         save_img = torch.cat([gt_img, warp_img1], dim=-2)
 
                         if args.use_ema:
@@ -592,13 +601,13 @@ def main(args):
                             tracker = accelerator.get_tracker("tensorboard", unwrap=True)
                         else:
                             tracker = accelerator.get_tracker("tensorboard")
+                        
                         tracker.add_images('visualize_training/denoised_flow', denoised_flo, global_step, dataformats='HWC')
-                        tracker.add_images('visualize_training/noised_flow', noised_flow, global_step,
-                                           dataformats='HWC')
-                        tracker.add_images('train_samples/flo_pre', flo, global_step, dataformats='HWC')
+                        tracker.add_images('visualize_training/noised_flow', noised_flow, global_step, dataformats='HWC')
+                        tracker.add_images('train_samples/flo_pred', flo, global_step, dataformats='HWC')
                         tracker.add_images('train_samples/flo_gt', flo_gt, global_step, dataformats='HWC')
                         tracker.add_images('train_samples/concat_img', save_img / 255, global_step, dataformats='CHW')
-                        tracker.add_images('train_samples/warp_by_pre', pre_warpimg1 / 255, global_step, dataformats='CHW')
+                        tracker.add_images('train_samples/warp_by_pre', pred_warpimg1 / 255, global_step, dataformats='CHW')
 
                 if global_step % args.checkpointing_steps == 0:
                     # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
@@ -623,7 +632,9 @@ def main(args):
 
                     save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                     accelerator.save_state(save_path)
-                    logger.info(f"Saved state to {save_path}")
+                    if accelerator.is_main_process:
+                        logger.info(f"Saved state to {save_path}")
+                    
                     if accelerator.is_main_process:
                         # save the model
                         unet = accelerator.unwrap_model(model)
@@ -640,16 +651,26 @@ def main(args):
                         pipeline.save_pretrained(os.path.join(args.output_dir, f"pipeline-{global_step}"))
 
                         # validate on test set
-                        metrics.update(evaluate_diffusers.validate_kitti(pipeline, args=args))
+                        #metrics.update(
+                        #    evaluate_diffusers.validate_kitti(pipeline, args=args)
+                        #    )
 
                         if args.use_ema:
                             ema_model.restore(unet.parameters())
+                        #print ("????? done here 0")
             if args.use_ema:
                 metrics["ema_decay"] = ema_model.cur_decay_value
+                #print (f"????? rank = {accelerator.process_index} done here 1, ")
+            #print (f"????? rank = {accelerator.process_index} done here 3, ")
             progress_bar.set_postfix(**metrics)
+            #print (f"????? rank = {accelerator.process_index} done here 4, ")
             accelerator.log(metrics, step=global_step)
+            #print (f"????? rank = {accelerator.process_index} done here 5, ")
         progress_bar.close()
+        #print (f"????? rank = {accelerator.process_index} done here 6, ")
         accelerator.wait_for_everyone()
+        #print (f"????? rank = {accelerator.process_index} done here 7, ")
+        # for next epoch training;
 
     accelerator.end_training()
 

@@ -120,7 +120,8 @@ class PCAAug(object):
     """tf.cond true_fn for eig_nomean."""
     eig_result = eig[:, :, c] / max_abs_eig[c]
     a = tf.pow(tf.abs(eig_result), self.pow_nomean[c])
-    b = (tf.to_float(eig_result > 0) - 0.5) * 2
+    #b = (tf.to_float(eig_result > 0) - 0.5) * 2
+    b = (tf.cast(eig_result > 0, dtype=tf.float32) - 0.5) * 2
     eig_result = tf.multiply(a, b)
     eig_result = eig_result + self.add_nomean[c]
     eig_result = eig_result * self.mult_nomean[c]
@@ -129,7 +130,8 @@ class PCAAug(object):
   def _apply_eig_withmean(self, eig, max_abs_eig):
     """tf.cond true_fn."""
     a = tf.pow(tf.abs(eig[:, :, 0]), self.pow_withmean[0])
-    b = (tf.to_float(eig[:, :, 0] > 0) - 0.5) * 2
+    #b = (tf.to_float(eig[:, :, 0] > 0) - 0.5) * 2
+    b = (tf.cast(eig[:, :, 0] > 0, dtype=tf.float32) - 0.5) * 2
     eig0 = tf.multiply(a, b)
     eig0 += self.add_withmean[0]
     eig0 *= self.mult_withmean[0]
@@ -151,7 +153,8 @@ class PCAAug(object):
     l1 = tf.clip_by_value(l1 + self.lmult_add, 0, np.inf)
     l1 = l1 * self.lmult_mult
     l1 = l1 * max_l
-    lmask = tf.to_float(l > 1e-2)
+    #lmask = tf.to_float(l > 1e-2)
+    lmask = tf.cast(l > 1e-2, dtype=tf.float32)
     eig = eig * tf.expand_dims((1 - lmask), -1) + tf.multiply(
         tf.divide(eig, tf.expand_dims(l, -1)), tf.expand_dims(
             l1, -1)) * tf.expand_dims(lmask, -1)
@@ -199,7 +202,8 @@ class PCAAug(object):
 
     s = tf.sqrt(eig[:, :, 1] * eig[:, :, 1] + eig[:, :, 2] * eig[:, :, 2] +
                 1e-9)
-    smask = tf.to_float(s > 1e-2)
+    #smask = tf.to_float(s > 1e-2)
+    smask = tf.cast(s > 1e-2, dtype=tf.float32)
     s1 = tf.pow(s, self.pow_withmean[1])
     s1 = tf.clip_by_value(s1 + self.add_withmean[1], 0, np.inf)
     s1 = s1 * self.mult_withmean[1]
@@ -218,11 +222,12 @@ class PCAAug(object):
       eig_list.append(tmp)
 
     is_apply = tf.greater(max_l, 1e-2)
-    tmp = tf.to_float(
+    tmp = tf.cast(
         tf.sqrt(
             tf.multiply(eig_list[0], eig_list[0]) +
             tf.multiply(eig_list[1], eig_list[1]) +
-            tf.multiply(eig_list[2], eig_list[2])) / max_l + 1e-9)
+            tf.multiply(eig_list[2], eig_list[2])) / max_l + 1e-9, 
+            dtype = tf.float32)
     l1 = tf.cond(is_apply, lambda: tmp, lambda: tmp * 0)
 
     eig_list[1] = eig_list[1] * (1 - smask) + eig_list[1] / s * s1 * smask
