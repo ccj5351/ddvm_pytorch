@@ -1,7 +1,7 @@
-imagen-pytorch==1.25.6
-accelerate==0.21.0
-tensorflow-cpu==2.13.0
-tensorflow-addons==0.21.0
+imagen-pytorch>=1.25.6
+accelerate==1.0.1
+tensorflow-cpu>=2.13.0
+tensorflow-addons>=0.21.0
 diffusers["torch"]
 tensorboard
 datasets
