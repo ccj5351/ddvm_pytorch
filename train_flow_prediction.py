@@ -9,6 +9,10 @@ from tqdm.auto import tqdm
 import torch
 from datetime import datetime
 
+# you can comment out this if necessary
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 import accelerate
 import datasets
 from accelerate import InitProcessGroupKwargs
@@ -207,8 +211,18 @@ def parse_args():
 
     # added by CCJ;
     parser.add_argument('--data_dir', type = str, default= "datasets/", help="input data dir")
+    parser.add_argument('--finetune_from_model_only', type = str, default= "")
+
 
     args = parser.parse_args()
+
+    if args.resume_from_checkpoint == "none":
+        args.resume_from_checkpoint = None
+    if args.resume_from_model_only == "none":
+        args.resume_from_model_only = None
+    if args.finetune_from_model_only == "none":
+        args.finetune_from_model_only = None
+    
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -318,17 +332,39 @@ def main(args):
 
     global_step = 0
 
-    if args.resume_from_model_only is not None:
-        print('Loading model weights from', args.resume_from_model_only, '/pytorch_model.bin')
-        model.load_state_dict(
-                torch.load(args.resume_from_model_only + '/pytorch_model.bin', map_location='cpu'))
-        if args.use_ema:
-            load_model = EMAModel.from_pretrained(os.path.join(args.resume_from_model_only, "unet_ema"), model_class)
-            ema_model.load_state_dict(load_model.state_dict())
-            ema_model.to(accelerator.device)
-            del load_model
-        path = os.path.basename(args.resume_from_model_only)
-        global_step = int(path.split("-")[1])
+    if args.resume_from_model_only or args.finetune_from_model_only:
+        assert not args.resume_from_checkpoint, "set it be None or empty"
+        if args.resume_from_model_only:
+            print('Loading model weights from', args.resume_from_model_only, '/pytorch_model/*')
+            ckpt_dict = torch.load(
+                        #args.resume_from_model_only + '/pytorch_model.bin', 
+                        args.resume_from_model_only + '/pytorch_model/mp_rank_00_model_states.pt', 
+                    map_location='cpu')
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(args.resume_from_model_only, "unet_ema"), model_class)
+                ema_model.load_state_dict(load_model.state_dict())
+                ema_model.to(accelerator.device)
+                del load_model
+            path = os.path.basename(args.resume_from_model_only)
+            global_step = int(path.split("-")[1])
+        
+        elif args.finetune_from_model_only:
+            ckpt_dict = torch.load(
+                        args.finetune_from_model_only + '/pytorch_model/mp_rank_00_model_states.pt', 
+                    map_location='cpu')
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(args.finetune_from_model_only, "unet_ema"), model_class)
+                ema_model.load_state_dict(load_model.state_dict())
+                ema_model.to(accelerator.device)
+                del load_model
+            
+            # just use the model weights, and set first epoch as zero
+            global_step = 0
+        
+        #print (ckpt_dict['module'].keys())
+        #print (model.state_dict().keys())
+        model.load_state_dict(ckpt_dict['module'], strict=True)
+
 
     # Initialize the scheduler
     scale = 1000 / args.ddpm_num_steps
@@ -409,6 +445,8 @@ def main(args):
 
     # Potentially load in the weights and states from a previous save
     if args.resume_from_checkpoint:
+        assert not args.resume_from_model_only, "set it be None or empty"
+        assert not args.finetune_from_model_only, "set it be None or empty"
         if args.resume_from_checkpoint != "latest":
             path = os.path.basename(args.resume_from_checkpoint)
         else:
@@ -435,6 +473,8 @@ def main(args):
         first_epoch = global_step // num_update_steps_per_epoch
         for i in range(global_step):
             lr_scheduler.step()
+    
+    
 
     # Train!
     should_keep_training = True
@@ -672,4 +712,5 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
+    print (args)
     main(args)

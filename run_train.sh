@@ -15,16 +15,18 @@ UNET_TYPE='RAFT_Unet'
 
 DATA_STAGE="autoflow"
 #DATA_STAGE="chairs"
-#BATCH_SIZE=4 # 1-GPU
-BATCH_SIZE=12 # 1-GPU
+BATCH_SIZE=8 # 1-GPU
+#BATCH_SIZE=12 # 6-GPU
+#BATCH_SIZE=16 # 8-GPU
 IMAGE_H=320
 IMAGE_W=448
 NUM_WORKERS=8
 NUM_STEPS=1000000 #1000k
 SAVE_IMAGES_STEPS=500
 LR_WARMUP_STEPS=10000
-CHECKPOINTING_STEPS=10000
-CHECKPOINTS_TOTAL_LIMIT=5
+#CHECKPOINTING_STEPS=10000
+CHECKPOINTING_STEPS=1000
+CHECKPOINTS_TOTAL_LIMIT=10
 
 #{no,fp16,bf16,fp8}
 MIXED_PRECISION=fp16
@@ -34,7 +36,7 @@ GPU_NUM=$(echo "$GPU_IDS" | tr "$IFS" '\n' | wc -l)
 
 LEARNING_RATE=1e-4
 LR_SCHEDULER='cosine'
-EXP_NAME="exp01_bl_ddvm_$UNET_TYPE"
+EXP_NAME="exp02_bl_ddvm_$UNET_TYPE"
 EXP_NAME="${EXP_NAME}_bs${BATCH_SIZE}Gn${GPU_NUM}_${MACHINE_NAME}"
 OUTPUT_DIR="$PROJ_ROOT/experiment-output-nfs/$EXP_NAME"
 
@@ -43,13 +45,23 @@ RESUME_FROM_CHECKPOINT="experiment-output-nfs/exp01_bl_ddvm_RAFT_Unet_bs12Gn6_a6
 #RESUME_FROM_CHECKPOINT=""
 
 # if resume with latest checkpoints, have to specify your EXP_NAME
-RESUME_FROM_CHECKPOINT="latest"
-EXP_NAME="exp01_bl_ddvm_RAFT_Unet_bs12Gn6_a6ks3-2024-11-25_23:56:56"
-OUTPUT_DIR="$PROJ_ROOT/experiment-output-nfs/$EXP_NAME"
+# RESUME_FROM_CHECKPOINT="latest"
+# EXP_NAME="exp01_bl_ddvm_RAFT_Unet_bs12Gn6_a6ks3-2024-11-25_23:56:56"
+# OUTPUT_DIR="$PROJ_ROOT/experiment-output-nfs/$EXP_NAME"
+
+
+#RESUME_FROM_MODEL_ONLY="exp01_bl_ddvm_RAFT_Unet_bs12Gn6_a6ks3-2024-11-25_23:56:56/checkpoint-12000"
+#RESUME_FROM_MODEL_ONLY="$PROJ_ROOT/experiment-output-nfs/$RESUME_FROM_MODEL_ONLY"
+#RESUME_FROM_CHECKPOINT=""
+
+FINETUNE_FROM_MODEL_ONLY="exp01_bl_ddvm_RAFT_Unet_bs12Gn6_a6ks3-2024-11-25_23:56:56/checkpoint-12000"
+FINETUNE_FROM_MODEL_ONLY="$PROJ_ROOT/experiment-output-nfs/$FINETUNE_FROM_MODEL_ONLY"
+RESUME_FROM_CHECKPOINT="none"
+RESUME_FROM_MODEL_ONLY="none"
 
 # if not resume, we add random (i.e., cur time) to output dir;
 # ow, we use 
-if [ "$RESUME_FROM_CHECKPOINT" = "" ]; then
+if [ "$RESUME_FROM_CHECKPOINT" == "" && "$RESUME_FROM_MODEL_ONLY" != "" ]; then
     # Get the current time in the desired format
     #CURRENT_TIME=$(date '+%Y-%m-%d_%H:%M:%S')
     CURRENT_TIME=$(date '+%Y-%m-%d')
@@ -75,6 +87,30 @@ elif [ "$RESUME_FROM_CHECKPOINT" = "latest" ]; then
     fi
     echo "[***] OUTPUT_DIR=$OUTPUT_DIR"
     echo "[***] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
+
+elif [[ "$RESUME_FROM_MODEL_ONLY" != "" || "$FINETUNE_FROM_MODEL_ONLY" != "" ]]; then
+    echo "Resuming/Finetune training using only model weights ... "
+    echo "Please make sure your OUTPUT_DIR is correct ..."
+    CURRENT_TIME=$(date '+%Y-%m-%d')
+    OUTPUT_DIR="$OUTPUT_DIR-$CURRENT_TIME"
+    RESUME_FROM_CHECKPOINT="none"
+    echo "Finetuning from model weights ..."
+
+    # Prompt the user for confirmation
+    read -p "It was $OUTPUT_DIR. Do you want to continue? (y/n): " response
+
+    # Convert response to lowercase for consistency
+    response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+    if [[ "$response" == "y" || "$response" == "yes" ]]; then
+        echo "You chose Yes. Proceeding..."
+    else
+        echo "You chose No. Exiting..."
+        exit 1
+    fi
+    echo "[***] OUTPUT_DIR=$OUTPUT_DIR"
+    echo "[***] RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT"
+    echo "[***] RESUME_FROM_MODEL_ONLY=$RESUME_FROM_MODEL_ONLY"
+    echo "[***] FINETUNE_FROM_MODEL_ONLY=$FINETUNE_FROM_MODEL_ONLY"
 else
     echo "Resuming training ... "
     echo "OUTPUT_DIR should be the same as RESUME_FROM_CHECKPOINT ..."
@@ -120,5 +156,7 @@ if [ "$flag" = true ]; then
         --use_ema \
         --add_gaussian_noise \
         --resume_from_checkpoint $RESUME_FROM_CHECKPOINT \
+        --resume_from_model_only $RESUME_FROM_MODEL_ONLY \
+        --finetune_from_model_only $FINETUNE_FROM_MODEL_ONLY \
         --normalize_range
 fi
